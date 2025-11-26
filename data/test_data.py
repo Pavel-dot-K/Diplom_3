@@ -1,0 +1,2 @@
+STELLAR_EMAIL = "qwerty543216@icloud.com"
+STELLAR_PASSWORD = "qwerty543216"
