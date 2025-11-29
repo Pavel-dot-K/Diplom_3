@@ -9,28 +9,35 @@ class LoginPage(BasePage):
 
 
     def open_login(self, base_url: str) -> "LoginPage":
-        self.open(base_url.rstrip("/") + "/login")
-        self.wait_visible(login_page_locators.REGISTER_LINK)
+        with allure.step("Открыть страницу логина"):
+            self.open(base_url.rstrip("/") + "/login")
+        with allure.step("Ожидать видимость ссылки регистрации"):
+            self.wait_visible(login_page_locators.REGISTER_LINK)
         return self
 
 
     def fill_credentials_and_submit(self, email: str, password: str) -> "LoginPage":
-        self.type(login_page_locators.EMAIL_INPUT, email) 
-        self.type(login_page_locators.PASSWORD_INPUT, password)
-        self.click(login_page_locators.ENTER_BUTTON)           
+        with allure.step(f"Ввести email: {email}"):
+            self.type(login_page_locators.EMAIL_INPUT, email)
+        with allure.step("Ввести пароль"):
+            self.type(login_page_locators.PASSWORD_INPUT, password)
+        with allure.step("Нажать кнопку входа"):
+            self.click(login_page_locators.ENTER_BUTTON)
         return self
 
 
     def wait_logged_in(self) -> "LoginPage":
-        self.wait_gone(login_page_locators.ENTER_BUTTON)       
-        self.wait_visible(base_page_locators.CONSTRUCTOR_TEXT)
+        with allure.step("Ожидание завершения входа"):
+            self.wait_gone(login_page_locators.ENTER_BUTTON)
+        with allure.step("Ожидание видимости конструктора на главной странице"):
+            self.wait_visible(base_page_locators.CONSTRUCTOR_TEXT)
         return self
 
- 
+
     def login(self, base_url: str, email: str, password: str) -> "LoginPage":
-        return (
-            self.open_login(base_url)
-                .fill_credentials_and_submit(email, password)
-                .wait_logged_in()
-        )
-    
+        with allure.step("Полный процесс входа: открыть логин, ввести креды и ждать вход"):
+            return (
+                self.open_login(base_url)
+                    .fill_credentials_and_submit(email, password)
+                    .wait_logged_in()
+            )

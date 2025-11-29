@@ -47,4 +47,3 @@ def auth_login(driver):
     if not (email and password):
         pytest.skip("Нет учётных данных")
     LoginPage(driver).login(Urls.BASE_URL, email, password)
-    yield
