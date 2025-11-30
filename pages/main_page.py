@@ -19,11 +19,6 @@ MaybeEl = Union[Locator, WebElement, str]
 class MainPage(BasePage):  
 
 
-    def __init__(self, driver, timeout=15):
-        with allure.step(f"Инициализация: timeout={timeout}"):
-            super().__init__(driver, timeout)
-
-
     def close_ingredient_modal(self) -> None:
         with allure.step("Закрыть ингредиент-модальное окно"):
             self.close_overlays_if_any()
@@ -38,7 +33,7 @@ class MainPage(BasePage):
 
     def _click_first_available(self, locators, timeout: int = 10) -> bool:
         with allure.step(f"Click first available: locators_count={len(locators)}, timeout={timeout}"):
-                btn = EC.element_to_be_clickable((by, locator))
+                btn = self.wait_clickable((by, locator))
                 btn.click()
                 return True
 
@@ -47,18 +42,11 @@ class MainPage(BasePage):
         with allure.step(f"Клик по булке (bun): timeout={timeout}"):
             self.click(base_page_locators.BUN)
             return True
-    
-
-    @property
-    def modal_overlay_present(self) -> bool:
-        with allure.step("Modal overlay presence check"):
-            overlays = self.driver.find_elements(*base_page_locators.MODAL_OVERLAY)
-            return bool(overlays)
 
 
     def is_ingredient_modal_displayed(self) -> bool:
         with allure.step("Проверяем наличие окна игредиента"):
-            els = self.driver.find_elements(*base_page_locators.INGREDIENT_MODAL)
+            els = self.finds(base_page_locators.INGREDIENT_MODAL)
             return bool(els) and els[0].is_displayed()
 
 
@@ -104,7 +92,7 @@ class MainPage(BasePage):
             destination = base_page_locators.CONSTRUCTOR_AREA
             bun = base_page_locators.BUN
             try:
-                self.driver.execute_script(bun, destination)
+                self.execute_script(bun, destination)
                 if self._element_is_descendant(destination, bun):
                     return True
             except Exception:
@@ -124,9 +112,7 @@ class MainPage(BasePage):
                 self.wait_invisible(base_page_locators.OVERLAY, timeout)
                 self.wait_visible(base_page_locators.BUN_NUMBER_EMPTY)
                 self.drag_and_drop(base_page_locators.BUN, base_page_locators.INGREDIENT_BLOCK, timeout)
-                el = WebDriverWait(self.driver, timeout).until(
-                    EC.visibility_of_element_located(base_page_locators.BUN_NUMBER_FILLED)
-                )
+                el = self.wait_visible(base_page_locators.BUN_NUMBER_FILLED)
                 text = (el.text or "").strip()
                 try:
                     value = int(text)
@@ -140,27 +126,17 @@ class MainPage(BasePage):
             with allure.step("Ожидание видимости источника и цели"):
                 self.wait_visible(source)
                 self.wait_visible(target)
+
             with allure.step("Получение элементов источника и цели"):
                 src_el = self.find(source)
                 tgt_el = self.find(target)
+
             with allure.step("Прокрутить элементы в видимую область"):
                 self.scroll_into_view(src_el)
                 self.scroll_into_view(tgt_el)
+
             with allure.step("Выполнить JS-драг-дроп"):
-                self.driver.execute_script(
-                    """
-                    var s = arguments[0], t = arguments[1];
-                    function fire(el, type, dt){
-                    var e = document.createEvent('CustomEvent');
-                    e.initCustomEvent(type, true, true, null);
-                    e.dataTransfer = dt;
-                    el.dispatchEvent(e);
-                    }
-                    var dt = {data:{}, setData(k,v){this.data[k]=v}, getData(k){return this.data[k]}};
-                    fire(s,'dragstart',dt); fire(t,'dragenter',dt); fire(t,'dragover',dt); fire(t,'drop',dt); fire(s,'dragend',dt);
-                    """,
-                    src_el, tgt_el,
-                )
+                self.js_drag_and_drop(src_el, tgt_el)
 
 
     def add_ingredient_by_drag(self, name: str):
@@ -174,7 +150,7 @@ class MainPage(BasePage):
     def build_burger_with_drag_and_drop(self, timeout=45) -> None:
         with allure.step("build_burger_with_drag_and_drop: постройка бургера через drag-and-drop"):
             self.scroll_to_top()
-            overlay_locator = ("css selector", "div.Modal_modal_overlay__x2ZCr")
+            overlay_locator = (base_page_locators.OVERLAY)
             try:
                 with allure.step("Ожидание исчезновения оверлея"):
                     self.wait_invisible(overlay_locator, timeout)
@@ -189,8 +165,8 @@ class MainPage(BasePage):
                     self.wait_invisible(base_page_locators.OVERLAY, timeout)
             except Exception:
                 with allure.step("Ожидание исчезновения модального оверлея перед соусами"):
-                    self.wait_invisible(("css selector", "div.Modal_modal_overlay"), timeout)
-                    self.wait_invisible((By.XPATH, "//div[contains(@class,'Modal_modal_overlay__x2ZCr')]"), timeout)
+                    self.wait_invisible(base_page_locators.OVERLAY, timeout)
+                    self.wait_invisible(base_page_locators.OVERLAY, timeout)
             with allure.step("Ожидание исчезновения основного оверлея"):
                 self.wait_invisible(base_page_locators.OVERLAY, timeout)
             with allure.step("Перетаскивание булок в ингредиент-блок"):
@@ -198,7 +174,7 @@ class MainPage(BasePage):
                 self.drag_and_drop(base_page_locators.BUN_2, base_page_locators.INGREDIENT_BLOCK, timeout)
             with allure.step("Ожидание исчезновения оверлея и выбор соусов"):
                 self.wait_invisible(base_page_locators.OVERLAY, timeout=15)
-                WebDriverWait(self.driver, timeout).until(EC.element_to_be_clickable(base_page_locators.SAUCES_SECTION,)).click()
+                self.wait_clickable(base_page_locators.SAUCES_SECTION,).click()
             with allure.step("Ожидание исчезновения оверлея перед соусами"):
                 self.wait_invisible(base_page_locators.OVERLAY, timeout=15)
             with allure.step("Перетаскивание соусов в ингредиент-блок"):
@@ -209,8 +185,8 @@ class MainPage(BasePage):
 
     def drag_and_drop(self, source_locator, target_locator, timeout=10):
         with allure.step(f"drag_and_drop: source={source_locator}, target={target_locator}, timeout={timeout}"):
-            source = WebDriverWait(self.driver, timeout).until(EC.element_to_be_clickable(source_locator))
-            target = WebDriverWait(self.driver, timeout).until(EC.visibility_of_element_located(target_locator))
+            source = self.wait_clickable(source_locator)
+            target = self.wait_visible(target_locator)
             actions = ActionChains(self.driver)
             try:
                 with allure.step("Выполнить обычное drag_and_drop через ActionChains"):

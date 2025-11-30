@@ -1,16 +1,11 @@
 from __future__ import annotations
-import re
 import allure
 from pages.base_page import BasePage
 from locators_module import order_feed_locators
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-
-
-def _to_int_safe(txt: str) -> int:
-    return int(re.sub(r"\D", "", txt or "") or 0)
-
+from helpers import _to_int_safe
 
 class OrderFeedPage(BasePage):
 

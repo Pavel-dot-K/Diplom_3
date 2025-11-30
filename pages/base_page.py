@@ -18,6 +18,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver import ActionChains
 
 
+
 Locator = Tuple[By, str]
 MaybeEl = Union[Locator, WebElement, str]
 DEFAULT_POLL = 0.2
@@ -121,104 +122,21 @@ class BasePage:
     # Функция без time.sleep, по комментарию # 7
     @allure.step("Безопасный клик: locator={locator}")
     def safe_click(self, locator) -> None:
-        """Безопасный клик: пробуем несколько стратегий без использования time.sleep."""
-        last_err = None
-        for attempt in range(3):
-            with allure.step(f"Попытка {attempt + 1}/3"):
-                try:
-                    with allure.step("Найти и показать элемент"):
-                        el = self.wait_visible(locator)
-                        self.scroll_into_view(el)
-                    with allure.step("Ожидание кликабельности (короткое)"):
-                        try:
-                            WebDriverWait(self.driver, 2, poll_frequency=0.25).until(
-                                EC.element_to_be_clickable(locator)
-                            )
-                        except Exception:
-                            pass
-                    try:
-                        with allure.step("Попытка: обычный el.click()"):
-                            el.click()
-                        with allure.step("Успешно: обычный click"):
-                            return
-                    except (ElementClickInterceptedException, ElementNotInteractableException) as err_click:
-                        last_err = err_click
-                        with allure.step(f"Обычный click не сработал: {err_click!r}"):
-                            with suppress(Exception):
-                                try:
-                                    allure.attach(el.get_attribute("outerHTML"), name="element_html", attachment_type=allure.attachment_type.HTML)
-                                except Exception:
-                                    pass
-                            try:
-                                with allure.step("Попытка: ActionChains.click()"):
-                                    ActionChains(self.driver).move_to_element(el).click().perform()
-                                with allure.step("Успешно: ActionChains"):
-                                    return
-                            except Exception as err_actions:
-                                last_err = err_actions
-                                with allure.step(f"ActionChains не сработал: {err_actions!r}"):
-                                    with suppress(Exception):
-                                        try:
-                                            allure.attach(self.driver.get_screenshot_as_png(), name="action_failed_screenshot", attachment_type=allure.attachment_type.PNG)
-                                        except Exception:
-                                            pass
-                                    try:
-                                        with allure.step("Попытка: JS click"):
-                                            el = self.find(locator)
-                                            self.scroll_into_view(el)
-                                            self.js_click(el)
-                                        with allure.step("Успешно: JS click"):
-                                            return
-                                    except Exception as err_js:
-                                        last_err = err_js
-                                        with allure.step(f"JS click не сработал: {err_js!r}"):
-                                            with suppress(Exception):
-                                                try:
-                                                    allure.attach(el.get_attribute("outerHTML"), name="element_html_after_js_attempt", attachment_type=allure.attachment_type.HTML)
-                                                except Exception:
-                                                    pass
-                    except StaleElementReferenceException as err_stale:
-                        last_err = err_stale
-                        with allure.step(f"StaleElementReferenceException: {err_stale!r} — повторим попытку"):
-                            pass
-                except Exception as err_find:
-                    last_err = err_find
-                    with allure.step(f"Ошибка при поиске/ожидании элемента: {err_find!r}"):
-                        with suppress(Exception):
-                            try:
-                                allure.attach(self.driver.get_screenshot_as_png(), name="find_error_screenshot", attachment_type=allure.attachment_type.PNG)
-                            except Exception:
-                                pass
-                with suppress(Exception):
-                    with allure.step("Почистить оверлеи и прокрутить вверх"):
-                        self.close_overlays_if_any()
-                        self.scroll_to_top()
-                try:
-                    WebDriverWait(self.driver, 2, poll_frequency=0.25).until(
-                        lambda d: self.is_visible(locator)
-                    )
-                except Exception:
-                    pass
-        with suppress(Exception):
-            with allure.step("Финальный fallback: попытка JS click"):
-                el = self.find(locator)
+        last_err: Optional[Exception] = None
+        for _ in range(2):
+                el = self.wait_visible(locator)
                 self.scroll_into_view(el)
-                self.js_click(el)
+                self.wait_clickable(locator).click()
                 return
-        with suppress(Exception):
-            try:
-                allure.attach(self.driver.get_screenshot_as_png(), name="final_failure_screenshot", attachment_type=allure.attachment_type.PNG)
-            except Exception:
-                pass
         if last_err:
-            raise last_err
-        else:
-            raise RuntimeError(f"Не удалось кликнуть по элементу {locator}")
-                              
-
+                raise last_err
+        with suppress(Exception):
+            self.close_overlays_if_any()
+            self.scroll_to_top()
+                                    
 
     def wait_clickable(self, locator):
-        with allure.step(f"Ожидание кликабельности: locator={locator}"):
+        with allure.step(f"Ожидание кликабельности"):
             return self.wait.until(EC.element_to_be_clickable(locator))
 
 
@@ -232,14 +150,14 @@ class BasePage:
                 except TypeError:
                     return condition()
             return tw.until(_cond, message)
-
+    
 
     def wait_gone(self, locator) -> bool:
         with allure.step(f"Wait gone: locator={locator}"):
             with suppress(TimeoutException):
                 return bool(self.wait.until(EC.invisibility_of_element_located(locator)))
             return False
-    
+
 
     def wait_visible(self, locator, timeout: int = None) -> WebElement:
         t = timeout if timeout is not None else self._default_timeout
@@ -250,11 +168,6 @@ class BasePage:
             return WebDriverWait(self.driver, t).until(
                 EC.visibility_of_element_located((by, value))
             )
-
-
-    def scroll_into_view(self, element):
-        with allure.step("Прокрутить элемент в видимую область"):
-            self.driver.execute_script("arguments[0].scrollIntoView({block:'center', inline:'nearest'});", element)
 
 
     def _element_is_descendant(self, parent, child) -> bool:
@@ -294,7 +207,7 @@ class BasePage:
 
     def open(self, url: str) -> "MainPage":
         with allure.step(f"Open page: url={url}"):
-            self.driver.get(url)
+            self.get(url)
             return self
     
 
@@ -302,33 +215,32 @@ class BasePage:
         with allure.step("Прокрутить до элемента в видимую область"):
             el = self._as_element(target)
             with suppress(Exception):
-                self.driver.execute_script(
+                self.execute_script_view(
                     "arguments[0].scrollIntoView({block: arguments[1]});",
                     el,
                     block
                 )
 
 
+    def execute_script_view(self, script, *args):
+        with allure.step("Обёртка над WebDriver.execute_script_view"):
+            return self.driver.execute_script(script, *args)
+
+
     def type(self, locator, text, timeout: int = 10):
-        with allure.step(f"Type text into element: locator={locator}, text={text!r}, timeout={timeout}"):
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.visibility_of_element_located(locator)
-            )
+        with allure.step(f"Ввод текста в элемент: locator={locator}, текст={text!r}, timeout={timeout}"):
+            element = self.wait_visible(locator, timeout)
             element.clear()
             element.send_keys(text)
             return self
     
 
-    def wait_gone(self, locator, timeout=10):
+    def wait_gone(self, locator, timeout=10) -> bool:
         with allure.step(f"Wait element gone: locator={locator}, timeout={timeout}"):
-            from selenium.common.exceptions import TimeoutException
-            from contextlib import suppress
             with suppress(TimeoutException):
-                return bool(WebDriverWait(self.driver, timeout).until(
-                    EC.invisibility_of_element_located(locator)
-                ))
+                return bool(self.wait_until_invisible(locator, timeout))
             return False
-    
+
 
     def wait_any_visible(self, *locators, timeout: int = 15) -> WebElement:
         with allure.step(f"Wait any visible: locators={locators}, timeout={timeout}"):
@@ -341,10 +253,21 @@ class BasePage:
             return WebDriverWait(self.driver, t).until(EC.any_of(*conditions))
     
 
+    def wait_until_invisible(self, locator, timeout=None):
+        def condition(driver):
+            by, value = self._normalize_locator(locator)
+            return EC.invisibility_of_element_located((by, value))(driver)
+        return self.wait_until(condition, timeout=timeout, message=f"Ожидание исчезновения элемента: {locator}")
+
+
     def is_visible(self, locator, timeout=5) -> bool:
         with allure.step(f"Check visibility: locator={locator}, timeout={timeout}"):
             try:
-                WebDriverWait(self.driver, timeout).until(EC.visibility_of_element_located(locator))
+                def condition(driver):
+                    by, value = self._normalize_locator(locator)
+                    return EC.visibility_of_element_located((by, value))(driver)
+
+                self.wait_until(condition, timeout=timeout)
                 return True
             except TimeoutException:
                 return False
@@ -356,17 +279,19 @@ class BasePage:
                 return maybe
             if isinstance(maybe, tuple) and len(maybe) == 2:
                 by, locator = maybe
-                return self.driver.find_element(by, locator)
+                return self.find((by, locator))
             if isinstance(maybe, str):
-                return self.driver.find_element(By.CSS_SELECTOR, maybe)
+                return self.find((By.CSS_SELECTOR, maybe))
             raise TypeError(f"Unsupported target type for _as_element: {type(maybe)}")
     
 
     def wait_invisible(self, locator, timeout: int = 15):
         with allure.step(f"Wait invisible: locator={locator}, timeout={timeout}"):
             by, value = self._normalize_locator(locator)
-            WebDriverWait(self.driver, timeout).until(
-                EC.invisibility_of_element_located((by, value))
+            return self.wait_until(
+                lambda driver: EC.invisibility_of_element_located((by, value))(driver),
+                timeout=timeout,
+                message=f"Waiting for invisibility of element located by {locator}"
             )
 
 
@@ -417,3 +342,36 @@ class BasePage:
         except Exception:
             return False
         
+
+    def execute_script(self, script: str, *args):
+        with allure.step("Обёртка над WebDriver.execute_script"):
+            return self.driver.execute_script(script, *args)
+
+
+    def js_drag_and_drop(self, source_el, target_el):
+        with allure.step("Выполнить drag-and-drop через JS"):
+            script = """
+            var s = arguments[0], t = arguments[1];
+            function fire(el, type, dt){
+                var e = document.createEvent('CustomEvent');
+                e.initCustomEvent(type, true, true, null);
+                e.dataTransfer = dt;
+                el.dispatchEvent(e);
+            }
+            var dt = {
+                data: {},
+                setData: function(k,v){this.data[k]=v},
+                getData: function(k){return this.data[k]}
+            };
+            fire(s,'dragstart',dt);
+            fire(t,'dragenter',dt);
+            fire(t,'dragover',dt);
+            fire(t,'drop',dt);
+            fire(s,'dragend',dt);
+            """
+            self.execute_script(script, source_el, target_el)
+
+
+    def get(self, url: str):
+        with allure.step(f"Открыть страницу: {url}"):
+            self.driver.get(url)
